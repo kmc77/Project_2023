@@ -1,0 +1,127 @@
+pipeline {
+    environment {
+        repository = "logging2021/security" // Docker Hub ID와 repository 이름
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub') // Docker Hub에 Jenkins에 등록한 자격 증명 이름
+        TARGET_HOST = "ubuntu@15.165.203.14"
+    }
+    agent any
+
+    tools {
+        maven "maven" // 설치된 Maven의 이름
+    }
+
+    stages {
+        stage('Git Pull') {
+            steps {
+                git branch: 'origin', credentialsId: 'github', url: 'https://github.com/ksks1234/ITDA_Private'
+            }
+            post {
+                success {
+                    sh 'echo "Successfully Cloned Repository"'
+                }
+                failure {
+                    sh 'echo "Fail Cloned Repository"'
+                    exit 1
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                dir("ITDA_private") { // /var/jenkins_home/workspace/test_item/Spring10_Security_War
+                    sh "mvn -DskipTests clean package"
+                }
+            }
+            post {
+                success {
+                    echo 'Maven build success'
+                }
+                failure {
+                    echo 'Maven build failed'
+                    exit 1
+                }
+            }
+        }
+
+        stage('Dockerizing') {
+            steps {
+                dir("ITDA_private") { // Dockerfile 위치
+                    sh 'echo "Image Build Start"'
+                    sh 'docker build . -t $repository:$BUILD_NUMBER'
+                    sh 'docker build . -t $repository'
+                }
+            }
+            post {
+                success {
+                    sh 'echo "Build Docker Image Success"'
+                }
+                failure {
+                    sh 'echo "Build Docker Image Fail"'
+                    exit 1
+                }
+            }
+        }
+
+        stage('Login') {
+            steps {
+                sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin' // Docker Hub 로그인
+            }
+            post {
+                success {
+                    sh 'echo "Docker Login Success"'
+                }
+                failure {
+                    sh 'echo "Docker Login Fail"'
+                    exit 1
+                }
+            }
+        }
+
+        stage('Docker hub push') {
+            steps {
+                sh 'echo "Docker hub push"'
+                sh 'docker push $repository:$BUILD_NUMBER'
+                sh 'docker push $repository'
+            }
+            post {
+                success {
+                    sh 'echo "Docker hub push Success"'
+                }
+                failure {
+                    sh 'echo "Docker hub push Fail"'
+                    exit 1
+                }
+            }
+        }
+
+        stage('Cleaning up') {
+            steps {
+                sh 'echo "Docker image rmi"'
+                sh "docker rmi $repository:$BUILD_NUMBER" // Docker image 제거
+                sh "docker rmi $repository" // Docker image 제거
+            }
+            post {
+                success {
+                    sh 'echo "Docker hub push Success"'
+                }
+                failure {
+                    sh 'echo "Docker hub push Fail"'
+                    exit 1
+                }
+            }
+        }
+
+        stage('multiline ssh') {
+            steps {
+                sshagent(credentials: ['deploy-ec2']) {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ${TARGET_HOST} '
+                    sudo docker-compose down --rmi all
+                    sudo docker-compose up -d
+                    '
+                    """
+                }
+            }
+        }
+    }
+}
