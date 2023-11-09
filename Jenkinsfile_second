@@ -1,6 +1,6 @@
 pipeline {
     environment {
-        repository = "130150/security_aws:2023_11"  //docker hub id와 repository 이름
+        repository = "130150/security"  //docker hub id와 repository 이름
         DOCKERHUB_CREDENTIALS = credentials('dockerhub') // jenkins에 등록해 놓은 docker hub credentials 이름
     }
     agent any
